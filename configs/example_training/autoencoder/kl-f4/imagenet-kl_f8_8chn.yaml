@@ -3,7 +3,30 @@ model:
   target: sgm.models.autoencoder.AutoencodingEngine
   params:
     input_key: jpg
-    monitor: val/rec_loss
+    monitor: val/loss/rec
+    disc_start_iter: 0
+
+    encoder_config:
+      target: sgm.modules.diffusionmodules.model.Encoder
+      params:
+        attn_type: vanilla-xformers
+        double_z: true
+        z_channels: 8
+        resolution: 256
+        in_channels: 3
+        out_ch: 3
+        ch: 128
+        ch_mult: [1, 2, 4, 4]
+        num_res_blocks: 2
+        attn_resolutions: []
+        dropout: 0.0
+
+    decoder_config:
+      target: sgm.modules.diffusionmodules.model.Decoder
+      params: ${model.params.encoder_config.params}
+
+    regularizer_config:
+      target: sgm.modules.autoencoding.regularizers.DiagonalGaussianRegularizer
 
     loss_config:
       target: sgm.modules.autoencoding.losses.GeneralLPIPSWithDiscriminator
@@ -15,28 +38,6 @@ model:
 
         regularization_weights:
           kl_loss: 1.0
-
-    regularizer_config:
-      target: sgm.modules.autoencoding.regularizers.DiagonalGaussianRegularizer
-
-    encoder_config:
-      target: sgm.modules.diffusionmodules.model.Encoder
-      params:
-        attn_type: none
-        double_z: True
-        z_channels: 4
-        resolution: 256
-        in_channels: 3
-        out_ch: 3
-        ch: 128
-        ch_mult: [1, 2, 4]
-        num_res_blocks: 4
-        attn_resolutions: []
-        dropout: 0.0
-
-    decoder_config:
-      target: sgm.modules.diffusionmodules.model.Decoder
-      params: ${model.params.encoder_config.params}
 
 data:
   target: sgm.data.dataset.StableDataModuleFromConfig
