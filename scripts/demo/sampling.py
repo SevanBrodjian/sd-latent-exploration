@@ -1,5 +1,11 @@
 from pytorch_lightning import seed_everything
 
+import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+generative_models_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(generative_models_dir)
+
 from scripts.demo.streamlit_helpers import *
 
 SAVE_PATH = "outputs/demo/txt2img/"
