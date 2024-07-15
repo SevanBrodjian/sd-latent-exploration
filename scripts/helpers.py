@@ -17,8 +17,23 @@ import time
 from joblib import dump, load
 import warnings
 import random
+import cv2
+import gc
 
-lowvram_mode = False
+
+def read_prompts(filepath):
+    with open(filepath, 'r') as file:
+        content = file.read().strip() 
+        prompts = content.split('\n\n')
+    return prompts
+
+
+def clear_vram(model = None):
+    if model != None:
+        del model
+    gc.collect()
+    torch.cuda.synchronize()
+    torch.cuda.empty_cache()
 
 
 def reset_rng(seed):
@@ -31,32 +46,54 @@ def reset_rng(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def set_lowvram_mode(mode):
-    global lowvram_mode
-    lowvram_mode = mode
+def interpolate_samples(samples, interp):
+    N, C, H, W = samples.shape
+    assert N > 1, "There should be at least two samples to interpolate between."
+    
+    new_samples = [samples[0]]
+    
+    for i in range(N - 1):
+        start = samples[i]
+        end = samples[i + 1]
+        
+        for j in range(1, interp + 1):
+            alpha = j / (interp + 1)
+            interpolated_sample = (1 - alpha) * start + alpha * end
+            new_samples.append(interpolated_sample)
+    
+        new_samples.append(end)
+    
+    return torch.stack(new_samples)
 
 
-def load_model(model):
-    model.cuda()
+def interpolate_conds(conds, ucs, interp):
+    N = conds['crossattn'].shape[0]
+    assert N > 1, "There should be at least two samples to interpolate between."
+
+    interp_conds = {}
+    interp_ucs = {}
+    
+    for condtype in ['vector', 'crossattn']:
+        new_conds = [conds[condtype][0]]
+        
+        for i in range(N - 1):
+            start = conds[condtype][i]
+            end = conds[condtype][i + 1]
+            
+            for j in range(1, interp + 1):
+                alpha = j / (interp + 1)
+                interpolated_cond = (1 - alpha) * start + alpha * end
+                new_conds.append(interpolated_cond)
+        
+            new_conds.append(end)
+        
+        interp_conds[condtype] = torch.stack(new_conds)
+        interp_ucs[condtype] = torch.stack([ucs[condtype][0]]*len(new_conds))
+    
+    return interp_conds, interp_ucs
 
 
-def unload_model(model):
-    global lowvram_mode
-    if lowvram_mode:
-        model.cpu()
-        torch.cuda.empty_cache()
-
-
-def initial_model_load(model):
-    global lowvram_mode
-    if lowvram_mode:
-        model.model.half()
-    else:
-        model.cuda()
-    return model
-
-
-def perform_save_locally(save_path, samples):
+def save_png(save_path, samples):
     os.makedirs(os.path.join(save_path), exist_ok=True)
     base_count = len(os.listdir(os.path.join(save_path)))
     for sample in samples:
@@ -65,6 +102,24 @@ def perform_save_locally(save_path, samples):
             os.path.join(save_path, f"{base_count:09}.png")
         )
         base_count += 1
+
+
+def save_mp4(save_path, samples, fps=12):
+    os.makedirs(os.path.join(save_path), exist_ok=True)
+    base_count = len(os.listdir(os.path.join(save_path)))
+    video_filename = os.path.join(save_path, f"{base_count:09}.mp4")
+    
+    height, width = samples.shape[2], samples.shape[3]
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video_writer = cv2.VideoWriter(video_filename, fourcc, fps, (width, height))
+    
+    for sample in samples:
+        sample = 255.0 * rearrange(sample.cpu().numpy(), "c h w -> h w c")
+        frame = sample.astype(np.uint8)
+        video_writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+    
+    video_writer.release()
 
 
 def print_dur(time_start, time_end, message="Time spent"):
@@ -93,7 +148,7 @@ def load_model_from_config(config, ckpt=None, verbose=True, print_time=True):
         if len(u) > 0 and verbose:
             print("unexpected keys:")
             print(u)
-    model = initial_model_load(model)
+    model.cuda()
     model.eval()
     end_loadmodel = time.time()
     print_dur(start_loadmodel, end_loadmodel, "Model load time")
@@ -102,7 +157,7 @@ def load_model_from_config(config, ckpt=None, verbose=True, print_time=True):
 
 def load_model_from_joblib(path):
     model = load(path)
-    model = initial_model_load(model)
+    model.cuda()
     model.eval()
     warnings.filterwarnings("ignore", message="None of the inputs have requires_grad=True. Gradients will be None")
     return model
@@ -194,6 +249,18 @@ def init_embedder_options(keys, init_dict, prompt=None, negative_prompt=None, op
             value_dict["pool_image"] = image
 
     return value_dict
+
+
+def get_turbo_batch(prompts, dims):
+    num_prompts = len(prompts)
+    dims_tensor = torch.tensor([dims], device='cuda').repeat(num_prompts, 1)
+    batch = {
+        'original_size_as_tuple': dims_tensor,
+        'txt': prompts,
+        'crop_coords_top_left': torch.tensor([[0, 0]], device='cuda').repeat(num_prompts, 1),
+        'target_size_as_tuple': dims_tensor
+    }
+    return batch
 
 
 def get_batch(

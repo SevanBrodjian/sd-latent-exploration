@@ -12,6 +12,7 @@ from sgm.modules.diffusionmodules.guiders import (
     VanillaCFG,
 )
 from scripts.demo.discretization import Img2ImgDiscretizationWrapper
+from sgm.modules.diffusionmodules.sampling_utils import to_d
 from scripts.helpers import *
 
 SAMPLER_OPTIONS = [
@@ -32,6 +33,24 @@ GUIDER_OPTIONS = [
     "LinearPredictionGuider",
     "TrianglePredictionGuider",
 ]
+
+lowvram_mode = False
+
+
+def set_lowvram_mode(mode):
+    global lowvram_mode
+    lowvram_mode = mode
+
+
+def load_model(model):
+    model.cuda()
+
+
+def unload_model(model):
+    global lowvram_mode
+    if lowvram_mode:
+        model.cpu()
+        torch.cuda.empty_cache()
 
 
 def get_discretization(discretization, options = None):
@@ -337,3 +356,192 @@ def do_sample(
                 if return_latents:
                     return samples, samples_z
                 return samples
+            
+
+def get_conditionings(
+    model,
+    dims,
+    prompts,
+    num_samples = 1
+):
+    force_uc_zero_embeddings = []
+
+    precision_scope = autocast
+    with torch.no_grad():
+        with precision_scope("cuda"):
+            with model.ema_scope():
+                num_samples = [num_samples]
+                load_model(model.conditioner)
+                batch = get_turbo_batch(prompts, dims)
+                batch_uc = copy.deepcopy(batch)
+                batch_uc['txt'] = ['' for _ in batch['txt']]
+
+                c, uc = model.conditioner.get_unconditional_conditioning(
+                    batch,
+                    batch_uc=batch_uc,
+                    force_uc_zero_embeddings=force_uc_zero_embeddings,
+                    force_cond_zero_embeddings=None,
+                )
+                unload_model(model.conditioner)
+    return c, uc
+
+
+def get_samples(
+    model,
+    sampler,
+    dims,
+    c,
+    uc,
+    C=4,
+    F=8,
+    seed=42
+):
+    reset_rng(seed)
+    precision_scope = autocast
+    with torch.no_grad():
+        with precision_scope("cuda"):
+            with model.ema_scope():
+                additional_model_inputs = {}
+                N = c['crossattn'].shape[0]
+                shape = (N, C, dims[0] // F, dims[1] // F)
+                randn = torch.randn(shape).to("cuda")
+
+                def denoiser(input, sigma, c):
+                    return model.denoiser(
+                        model.model, input, sigma, c, **additional_model_inputs
+                    )
+
+                load_model(model.denoiser)
+                load_model(model.model)
+                samples = sampler(denoiser, randn, cond=c, uc=uc)
+                unload_model(model.model)
+                unload_model(model.denoiser)
+    return samples
+
+
+def decode_samples(
+    model,
+    samples
+):
+    precision_scope = autocast
+    with torch.no_grad():
+        with precision_scope("cuda"):
+            with model.ema_scope():
+                # load_model(model.first_stage_model)
+                model.en_and_decode_n_samples_a_time = (
+                    None  # Decode n frames at a time
+                )
+                samples_x = model.decode_first_stage(samples)
+                samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
+                # unload_model(model.first_stage_model)
+                grid = torch.stack([samples])
+                grid = rearrange(grid, "n b c h w -> (n h) (b w) c")
+                return samples
+
+
+def decode_in_chunks(
+    model, 
+    samples, 
+    chunk_size=6
+):
+    results = []
+    for i in range(0, samples.shape[0], chunk_size):
+        chunk = samples[i:i+chunk_size]
+        temp = decode_samples(model, chunk)
+        results.append(temp)
+        torch.cuda.empty_cache()
+
+    out = torch.cat(results, dim=0)
+    return out
+
+
+def manifold_interpolate(
+    model,
+    sampler,
+    num_steps,
+    start_sample,
+    end_sample,
+    alpha,
+    c,
+    uc,
+    steps=1
+):
+    # Linearly interpolate between start and end samples
+    interpolated_sample = (1 - alpha) * start_sample + alpha * end_sample
+
+    # Define a denoiser function compatible with the sampler
+    def denoiser(input, sigma, c):
+        return model.denoiser(
+            model.model, input, sigma, c
+        )
+
+    # Move the interpolated sample towards the learned manifold using the sampler
+    with torch.no_grad():
+        for _ in range(steps):
+            interpolated_sample = sampler(
+                denoiser,
+                interpolated_sample,
+                cond=c,
+                uc=uc,
+                num_steps=num_steps
+            )
+
+    return interpolated_sample
+
+
+def take_steps(
+    model,
+    sampler,
+    c,
+    interpolated_sample,
+    steps = 1
+):
+    precision_scope = autocast
+    with torch.no_grad():
+        with precision_scope("cuda"):
+            with model.ema_scope():
+                for _ in range(steps):
+                    # Initialize inputs
+                    sigma = torch.tensor([2e-1], device=interpolated_sample.device)  # Small positive sigma
+                    next_sigma = torch.tensor([1e-1], device=interpolated_sample.device)  # Small positive sigma
+                    gamma = 0.0
+
+                    # Perform the sampling step
+                    sigma_hat = sigma * (gamma + 1.0)
+
+                    if gamma > 0:
+                        eps = torch.randn_like(interpolated_sample) * sampler.s_noise
+                        interpolated_sample = interpolated_sample + eps * (sigma_hat**2 - sigma**2).sqrt()
+
+                    def denoiser(input, sigma, c):
+                        return model.denoiser(
+                            model.model, input, sigma, c
+                        )
+                    denoised = denoiser(interpolated_sample, sigma_hat, c)
+
+                    d = to_d(interpolated_sample, sigma_hat, denoised)
+
+                    # Handle dt carefully
+                    dt = (next_sigma - sigma_hat).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+
+                    # Avoid Infs in euler_step by capping values
+                    dt[dt == 0] = 1e-10  # Adding a small epsilon to avoid NaNs
+
+                    euler_step = interpolated_sample + dt * d
+
+                    if torch.sum(next_sigma) < 1e-14:
+                        manifold_sample = euler_step
+                    else:
+                        denoised = denoiser(euler_step, next_sigma, c)
+
+                        d_new = to_d(euler_step, next_sigma, denoised)
+
+                        d_prime = (d + d_new) / 2.0
+
+                        manifold_sample = torch.where(
+                            next_sigma.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1) > 0.0,
+                            interpolated_sample + d_prime * dt,
+                            euler_step
+                        )
+                    interpolated_sample = manifold_sample
+    return manifold_sample

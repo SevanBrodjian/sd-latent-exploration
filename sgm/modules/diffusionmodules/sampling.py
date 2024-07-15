@@ -117,6 +117,7 @@ class EDMSampler(SingleStepDiffusionSampler):
                 if self.s_tmin <= sigmas[i] <= self.s_tmax
                 else 0.0
             )
+            
             x = self.sampler_step(
                 s_in * sigmas[i],
                 s_in * sigmas[i + 1],

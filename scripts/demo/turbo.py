@@ -1,4 +1,12 @@
 from st_keyup import st_keyup
+
+import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+generative_models_dir = os.path.dirname(os.path.dirname(current_dir))
+sys.path.append(generative_models_dir)
+
+
 from streamlit_helpers import *
 
 from sgm.modules.diffusionmodules.sampling import EulerAncestralSampler
@@ -11,7 +19,7 @@ VERSION2SPECS = {
         "f": 8,
         "is_legacy": False,
         "config": "configs/inference/sd_xl_base.yaml",
-        "ckpt": "checkpoints/sd_xl_turbo_1.0.safetensors",
+        "ckpt": "checkpoints/sd_xl_turbo_1.0_fp16.safetensors",
     },
     "SD-Turbo": {
         "H": 512,

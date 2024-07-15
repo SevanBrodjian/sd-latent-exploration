@@ -666,6 +666,7 @@ class SpatialTransformer(nn.Module):
             context_dim = [None] * depth
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
+        print(inner_dim)
         self.norm = Normalize(in_channels)
         if not use_linear:
             self.proj_in = nn.Conv2d(
