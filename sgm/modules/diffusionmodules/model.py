@@ -488,19 +488,19 @@ class Encoder(nn.Module):
     def __init__(
         self,
         *,
-        ch,
-        out_ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
-        resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
-        double_z=True,
+        ch,                     # 128
+        out_ch,                 # 3
+        ch_mult=(1, 2, 4, 8),   # [1, 2, 4, 4]
+        num_res_blocks,         # 2
+        attn_resolutions,       # []
+        dropout=0.0,            # 0.0
+        resamp_with_conv=True,  
+        in_channels,            # 3
+        resolution,             # 256
+        z_channels,             # 4
+        double_z=True,          # True
         use_linear_attn=False,
-        attn_type="vanilla",
+        attn_type="vanilla",    # vanilla-xformers
         **ignore_kwargs,
     ):
         super().__init__()
@@ -605,20 +605,20 @@ class Decoder(nn.Module):
     def __init__(
         self,
         *,
-        ch,
-        out_ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
+        ch,                     # 128
+        out_ch,                 # 3
+        ch_mult=(1, 2, 4, 8),   # [1, 2, 4, 4]
+        num_res_blocks,         # 2
+        attn_resolutions,       # []
+        dropout=0.0,            # 0.0
         resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
+        in_channels,            # 3
+        resolution,             # 256
+        z_channels,             # 4
         give_pre_end=False,
         tanh_out=False,
         use_linear_attn=False,
-        attn_type="vanilla",
+        attn_type="vanilla",    # vanilla-xformers
         **ignorekwargs,
     ):
         super().__init__()

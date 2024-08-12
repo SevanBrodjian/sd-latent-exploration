@@ -1,5 +1,5 @@
 from sgm.modules.diffusionmodules.sampling import EulerAncestralSampler
-from scripts.helpers import *
+from scripts.helpers.helpers import *
 
 
 class SubstepSampler(EulerAncestralSampler):

@@ -42,9 +42,9 @@ class Denoiser(nn.Module):
 class DiscreteDenoiser(Denoiser):
     def __init__(
         self,
-        scaling_config: Dict,
-        num_idx: int,
-        discretization_config: Dict,
+        scaling_config: Dict,              # sgm.modules.diffusionmodules.denoiser_scaling.EpsScaling
+        num_idx: int,                      # 1000
+        discretization_config: Dict,       # sgm.modules.diffusionmodules.discretizer.LegacyDDPMDiscretization
         do_append_zero: bool = False,
         quantize_c_noise: bool = True,
         flip: bool = True,

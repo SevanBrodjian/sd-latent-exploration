@@ -762,6 +762,7 @@ def do_img2img(
                     value_dict,
                     [num_samples],
                 )
+                print(batch, '\n\n', batch_uc, force_uc_zero_embeddings, force_cond_zero_embeddings)
                 c, uc = model.conditioner.get_unconditional_conditioning(
                     batch,
                     batch_uc=batch_uc,
@@ -817,6 +818,7 @@ def do_img2img(
                 if filter is not None:
                     samples = filter(samples)
 
+                grid = torch.stack([samples]) 
                 grid = rearrange(grid, "n b c h w -> (n h) (b w) c")
                 outputs.image(grid.cpu().numpy())
                 if return_latents:

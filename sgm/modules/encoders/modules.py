@@ -161,6 +161,7 @@ class GeneralConditioner(nn.Module):
                     )
                 else:
                     output[out_key] = emb
+                # print(f"{embedder}, {out_key}, {output[out_key].shape}")
         return output
 
     def get_unconditional_conditioning(
@@ -182,6 +183,182 @@ class GeneralConditioner(nn.Module):
         for embedder, rate in zip(self.embedders, ucg_rates):
             embedder.ucg_rate = rate
         return c, uc
+
+# SD XL Base Output:
+# FrozenCLIPEmbedder(
+#   (transformer): CLIPTextModel(
+#     (text_model): CLIPTextTransformer(
+#       (embeddings): CLIPTextEmbeddings(
+#         (token_embedding): Embedding(49408, 768)
+#         (position_embedding): Embedding(77, 768)
+#       )
+#       (encoder): CLIPEncoder(
+#         (layers): ModuleList(
+#           (0-11): 12 x CLIPEncoderLayer(
+#             (self_attn): CLIPAttention(
+#               (k_proj): Linear(in_features=768, out_features=768, bias=True)
+#               (v_proj): Linear(in_features=768, out_features=768, bias=True)
+#               (q_proj): Linear(in_features=768, out_features=768, bias=True)
+#               (out_proj): Linear(in_features=768, out_features=768, bias=True)
+#             )
+#             (layer_norm1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+#             (mlp): CLIPMLP(
+#               (activation_fn): QuickGELUActivation()
+#               (fc1): Linear(in_features=768, out_features=3072, bias=True)
+#               (fc2): Linear(in_features=3072, out_features=768, bias=True)
+#             )
+#             (layer_norm2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+#           )
+#         )
+#       )
+#       (final_layer_norm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+#     )
+#   )
+# ), crossattn, torch.Size([10, 77, 768])
+# FrozenOpenCLIPEmbedder2(
+#   (model): CLIP(
+#     (transformer): Transformer(
+#       (resblocks): ModuleList(
+#         (0-31): 32 x ResidualAttentionBlock(
+#           (ln_1): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (attn): MultiheadAttention(
+#             (out_proj): NonDynamicallyQuantizableLinear(in_features=1280, out_features=1280, bias=True)
+#           )
+#           (ls_1): Identity()
+#           (ln_2): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (mlp): Sequential(
+#             (c_fc): Linear(in_features=1280, out_features=5120, bias=True)
+#             (gelu): GELU(approximate='none')
+#             (c_proj): Linear(in_features=5120, out_features=1280, bias=True)
+#           )
+#           (ls_2): Identity()
+#         )
+#       )
+#     )
+#     (token_embedding): Embedding(49408, 1280)
+#     (ln_final): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#   )
+# ), crossattn, torch.Size([10, 77, 2048])
+# FrozenOpenCLIPEmbedder2(
+#   (model): CLIP(
+#     (transformer): Transformer(
+#       (resblocks): ModuleList(
+#         (0-31): 32 x ResidualAttentionBlock(
+#           (ln_1): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (attn): MultiheadAttention(
+#             (out_proj): NonDynamicallyQuantizableLinear(in_features=1280, out_features=1280, bias=True)
+#           )
+#           (ls_1): Identity()
+#           (ln_2): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (mlp): Sequential(
+#             (c_fc): Linear(in_features=1280, out_features=5120, bias=True)
+#             (gelu): GELU(approximate='none')
+#             (c_proj): Linear(in_features=5120, out_features=1280, bias=True)
+#           )
+#           (ls_2): Identity()
+#         )
+#       )
+#     )
+#     (token_embedding): Embedding(49408, 1280)
+#     (ln_final): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#   )
+# ), vector, torch.Size([10, 1280])
+# ConcatTimestepEmbedderND(
+#   (timestep): Timestep()
+# ), vector, torch.Size([10, 1792])
+# ConcatTimestepEmbedderND(
+#   (timestep): Timestep()
+# ), vector, torch.Size([10, 2304])
+# ConcatTimestepEmbedderND(
+#   (timestep): Timestep()
+# ), vector, torch.Size([10, 2816])
+# FrozenCLIPEmbedder(
+#   (transformer): CLIPTextModel(
+#     (text_model): CLIPTextTransformer(
+#       (embeddings): CLIPTextEmbeddings(
+#         (token_embedding): Embedding(49408, 768)
+#         (position_embedding): Embedding(77, 768)
+#       )
+#       (encoder): CLIPEncoder(
+#         (layers): ModuleList(
+#           (0-11): 12 x CLIPEncoderLayer(
+#             (self_attn): CLIPAttention(
+#               (k_proj): Linear(in_features=768, out_features=768, bias=True)
+#               (v_proj): Linear(in_features=768, out_features=768, bias=True)
+#               (q_proj): Linear(in_features=768, out_features=768, bias=True)
+#               (out_proj): Linear(in_features=768, out_features=768, bias=True)
+#             )
+#             (layer_norm1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+#             (mlp): CLIPMLP(
+#               (activation_fn): QuickGELUActivation()
+#               (fc1): Linear(in_features=768, out_features=3072, bias=True)
+#               (fc2): Linear(in_features=3072, out_features=768, bias=True)
+#             )
+#             (layer_norm2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+#           )
+#         )
+#       )
+#       (final_layer_norm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+#     )
+#   )
+# ), crossattn, torch.Size([10, 77, 768])
+# FrozenOpenCLIPEmbedder2(
+#   (model): CLIP(
+#     (transformer): Transformer(
+#       (resblocks): ModuleList(
+#         (0-31): 32 x ResidualAttentionBlock(
+#           (ln_1): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (attn): MultiheadAttention(
+#             (out_proj): NonDynamicallyQuantizableLinear(in_features=1280, out_features=1280, bias=True)
+#           )
+#           (ls_1): Identity()
+#           (ln_2): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (mlp): Sequential(
+#             (c_fc): Linear(in_features=1280, out_features=5120, bias=True)
+#             (gelu): GELU(approximate='none')
+#             (c_proj): Linear(in_features=5120, out_features=1280, bias=True)
+#           )
+#           (ls_2): Identity()
+#         )
+#       )
+#     )
+#     (token_embedding): Embedding(49408, 1280)
+#     (ln_final): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#   )
+# ), crossattn, torch.Size([10, 77, 2048])
+# FrozenOpenCLIPEmbedder2(
+#   (model): CLIP(
+#     (transformer): Transformer(
+#       (resblocks): ModuleList(
+#         (0-31): 32 x ResidualAttentionBlock(
+#           (ln_1): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (attn): MultiheadAttention(
+#             (out_proj): NonDynamicallyQuantizableLinear(in_features=1280, out_features=1280, bias=True)
+#           )
+#           (ls_1): Identity()
+#           (ln_2): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#           (mlp): Sequential(
+#             (c_fc): Linear(in_features=1280, out_features=5120, bias=True)
+#             (gelu): GELU(approximate='none')
+#             (c_proj): Linear(in_features=5120, out_features=1280, bias=True)
+#           )
+#           (ls_2): Identity()
+#         )
+#       )
+#     )
+#     (token_embedding): Embedding(49408, 1280)
+#     (ln_final): LayerNorm((1280,), eps=1e-05, elementwise_affine=True)
+#   )
+# ), vector, torch.Size([10, 1280])
+# ConcatTimestepEmbedderND(
+#   (timestep): Timestep()
+# ), vector, torch.Size([10, 1792])
+# ConcatTimestepEmbedderND(
+#   (timestep): Timestep()
+# ), vector, torch.Size([10, 2304])
+# ConcatTimestepEmbedderND(
+#   (timestep): Timestep()
+# ), vector, torch.Size([10, 2816])
 
 
 class InceptionV3(nn.Module):
@@ -339,8 +516,8 @@ class FrozenCLIPEmbedder(AbstractEmbModel):
         device="cuda",
         max_length=77,
         freeze=True,
-        layer="last",
-        layer_idx=None,
+        layer="last", # hidden
+        layer_idx=None, # 11
         always_return_pooled=False,
     ):  # clip-vit-base-patch32
         super().__init__()

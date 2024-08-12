@@ -65,8 +65,8 @@ class BaseDiffusionSampler:
             print(f"Guider: {self.guider.__class__.__name__}")
             sigma_generator = tqdm(
                 sigma_generator,
-                total=num_sigmas,
-                desc=f"Sampling with {self.__class__.__name__} for {num_sigmas} steps",
+                total=num_sigmas-1,
+                desc=f"Sampling with {self.__class__.__name__} for {num_sigmas-1} steps",
             )
         return sigma_generator
 
@@ -327,7 +327,7 @@ class DPMPP2MSampler(BaseDiffusionSampler):
             for mult in self.get_mult(h, r, t, t_next, previous_sigma)
         ]
 
-        x_standard = mult[0] * x - mult[1] * denoised
+        x_standard = mult[0] * x - mult[1] *  denoised
         if old_denoised is None or torch.sum(next_sigma) < 1e-14:
             # Save a network evaluation if all noise levels are 0 or on the first step
             return x_standard, denoised

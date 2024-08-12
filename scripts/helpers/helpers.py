@@ -3,9 +3,11 @@ from safetensors.torch import load_file as load_safetensors
 from sgm.util import instantiate_from_config, default
 
 import torch
+import torch.nn.functional as F
 from torchvision import transforms
 from torch import autocast
 from torchvision.utils import make_grid
+from sgm.modules.diffusionmodules.discretizer import Discretization
 
 from PIL import Image
 import math
@@ -44,6 +46,42 @@ def reset_rng(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+class Img2ImgDiscretizationWrapper:
+    """
+    wraps a discretizer, and prunes the sigmas
+    params:
+        strength: float between 0.0 and 1.0. 1.0 means full sampling (all sigmas are returned)
+    """
+
+    def __init__(self, discretization: Discretization, strength: float = 1.0):
+        self.discretization = discretization
+        self.strength = strength
+        assert 0.0 <= self.strength <= 1.0
+
+    def __call__(self, *args, **kwargs):
+        # sigmas start large first, and decrease then
+        sigmas = self.discretization(*args, **kwargs)
+        sigmas = torch.flip(sigmas, (0,))
+        sigmas = sigmas[: max(int(self.strength * len(sigmas)), 1)]
+        sigmas = torch.flip(sigmas, (0,))
+        return sigmas
+
+
+def resize_to_div32(image_tensor):
+    _, _, H, W = image_tensor.shape
+
+    new_H = (H // 32) * 32
+    if H % 32 != 0:
+        new_H += 32
+
+    new_W = (W // 32) * 32
+    if W % 32 != 0:
+        new_W += 32
+
+    resized_tensor = F.interpolate(image_tensor, size=(new_H, new_W), mode='bilinear', align_corners=False)
+    return resized_tensor
 
 
 def interpolate_samples(samples, interp):
@@ -169,7 +207,7 @@ def get_unique_embedder_keys_from_conditioner(conditioner):
 
 def get_image(image_path = None):
     if image_path is not None:
-        image = Image.open(image)
+        image = Image.open(image_path)
         if not image.mode == "RGB":
             image = image.convert("RGB")
         return image
@@ -360,3 +398,23 @@ def get_batch(
         elif key in additional_batch_uc_fields and key not in batch_uc:
             batch_uc[key] = copy.copy(batch[key])
     return batch, batch_uc
+
+
+def change_framerate(input_path, output_path, new_fps):
+    cap = cv2.VideoCapture(input_path)
+    
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, new_fps, (frame_width, frame_height))
+    
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+    
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()

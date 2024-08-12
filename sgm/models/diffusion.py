@@ -18,22 +18,22 @@ from ..util import (default, disabled_train, get_obj_from_str,
 
 class DiffusionEngine(pl.LightningModule):
     def __init__(
-        self,
-        network_config,
-        denoiser_config,
-        first_stage_config,
-        conditioner_config: Union[None, Dict, ListConfig, OmegaConf] = None,
-
+        self,                                                                   # SD XL Base Configuration:
+        network_config,                                                         # sgm.modules.diffusionmodules.openaimodel.UNetModel
+        denoiser_config,                                                        # sgm.modules.diffusionmodules.denoiser.DiscreteDenoiser
+        first_stage_config,                                                     # sgm.models.autoencoder.AutoencoderKL
+        conditioner_config: Union[None, Dict, ListConfig, OmegaConf] = None,    # sgm.modules.GeneralConditioner
+        scale_factor: float = 1.0,                                              # 0.13025
+        disable_first_stage_autocast=False,                                     # True
+                                                                                # All other params are Default
         sampler_config: Union[None, Dict, ListConfig, OmegaConf] = None,
-        optimizer_config: Union[None, Dict, ListConfig, OmegaConf] = None,
+        optimizer_config: Union[None, Dict, ListConfig, OmegaConf] = None,      # torch.optim.AdamW
         scheduler_config: Union[None, Dict, ListConfig, OmegaConf] = None,
         loss_fn_config: Union[None, Dict, ListConfig, OmegaConf] = None,
-        network_wrapper: Union[None, str] = None,
+        network_wrapper: Union[None, str] = None,                               # OPENAIUNETWRAPPER
         ckpt_path: Union[None, str] = None,
         use_ema: bool = False,
         ema_decay_rate: float = 0.9999,
-        scale_factor: float = 1.0, # 0.13025
-        disable_first_stage_autocast=False, # True
         input_key: str = "jpg",
         log_keys: Union[List, None] = None,
         no_cond_log: bool = False,

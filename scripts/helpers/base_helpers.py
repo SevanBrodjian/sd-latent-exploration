@@ -11,9 +11,9 @@ from sgm.modules.diffusionmodules.guiders import (
     TrianglePredictionGuider,
     VanillaCFG,
 )
-from scripts.demo.discretization import Img2ImgDiscretizationWrapper
 from sgm.modules.diffusionmodules.sampling_utils import to_d
-from scripts.helpers import *
+from scripts.helpers.helpers import *
+from tqdm import tqdm
 
 SAMPLER_OPTIONS = [
     "EulerEDMSampler",
@@ -362,26 +362,22 @@ def get_conditionings(
     model,
     dims,
     prompts,
+    neg_prompts = None,
     num_samples = 1
 ):
-    force_uc_zero_embeddings = []
-
-    precision_scope = autocast
+    num_samples = [num_samples]
+    batch = get_turbo_batch(prompts, dims)
+    batch_uc = copy.deepcopy(batch)
+    if neg_prompts:
+        assert len(neg_prompts) == len(batch['txt']), "Same number of prompts and negative prompts must be provided."
+        batch_uc['txt'] = neg_prompts
+    else:
+        batch_uc['txt'] = ['' for _ in batch['txt']]
     with torch.no_grad():
-        with precision_scope("cuda"):
+        with autocast("cuda"):
             with model.ema_scope():
-                num_samples = [num_samples]
                 load_model(model.conditioner)
-                batch = get_turbo_batch(prompts, dims)
-                batch_uc = copy.deepcopy(batch)
-                batch_uc['txt'] = ['' for _ in batch['txt']]
-
-                c, uc = model.conditioner.get_unconditional_conditioning(
-                    batch,
-                    batch_uc=batch_uc,
-                    force_uc_zero_embeddings=force_uc_zero_embeddings,
-                    force_cond_zero_embeddings=None,
-                )
+                c, uc = model.conditioner.get_unconditional_conditioning(batch, batch_uc)
                 unload_model(model.conditioner)
     return c, uc
 
@@ -392,25 +388,19 @@ def get_samples(
     dims,
     c,
     uc,
-    C=4,
-    F=8,
     seed=42
 ):
     reset_rng(seed)
-    precision_scope = autocast
+    N = c['crossattn'].shape[0]
+    shape = (N, 4, dims[0] // 8, dims[1] // 8)
+    randn = torch.randn(shape).to("cuda")
     with torch.no_grad():
-        with precision_scope("cuda"):
+        with autocast("cuda"):
             with model.ema_scope():
-                additional_model_inputs = {}
-                N = c['crossattn'].shape[0]
-                shape = (N, C, dims[0] // F, dims[1] // F)
-                randn = torch.randn(shape).to("cuda")
-
                 def denoiser(input, sigma, c):
                     return model.denoiser(
-                        model.model, input, sigma, c, **additional_model_inputs
+                        model.model, input, sigma, c
                     )
-
                 load_model(model.denoiser)
                 load_model(model.model)
                 samples = sampler(denoiser, randn, cond=c, uc=uc)
@@ -419,21 +409,45 @@ def get_samples(
     return samples
 
 
+def get_samples_independent(
+    model,
+    sampler,
+    dims,
+    c,
+    uc,
+    seed=42
+):
+    cond_ind = {}
+    uc_ind = {}
+    cond_samples = []
+    verbose_save = sampler.verbose
+    sampler.verbose = False
+    for i in tqdm(range(c['crossattn'].shape[0]), desc="Generating samples"):
+        cond_ind['crossattn'] = c['crossattn'][i].unsqueeze(0)
+        cond_ind['vector'] = c['vector'][i].unsqueeze(0)
+        uc_ind['crossattn'] = uc['crossattn'][i].unsqueeze(0)
+        uc_ind['vector'] = uc['vector'][i].unsqueeze(0)
+        cond_sample_ind = get_samples(model, sampler, dims, cond_ind, uc_ind, seed)
+        cond_samples.append(cond_sample_ind)
+        clear_vram()
+    sampler.verbose = verbose_save
+    cond_samples = torch.cat(cond_samples, dim=0)
+    return cond_samples
+
+
 def decode_samples(
     model,
-    samples
+    samples,
+    n_per_decode = 1
 ):
-    precision_scope = autocast
     with torch.no_grad():
-        with precision_scope("cuda"):
+        with autocast("cuda"):
             with model.ema_scope():
-                # load_model(model.first_stage_model)
-                model.en_and_decode_n_samples_a_time = (
-                    None  # Decode n frames at a time
-                )
+                load_model(model.first_stage_model)
+                model.en_and_decode_n_samples_a_time = n_per_decode
                 samples_x = model.decode_first_stage(samples)
+                unload_model(model.first_stage_model)
                 samples = torch.clamp((samples_x + 1.0) / 2.0, min=0.0, max=1.0)
-                # unload_model(model.first_stage_model)
                 grid = torch.stack([samples])
                 grid = rearrange(grid, "n b c h w -> (n h) (b w) c")
                 return samples

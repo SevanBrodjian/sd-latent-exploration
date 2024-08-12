@@ -29,7 +29,7 @@ class AbstractAutoencoder(pl.LightningModule):
     def __init__(
         self,
         ema_decay: Union[None, float] = None,
-        monitor: Union[None, str] = None,
+        monitor: Union[None, str] = None,       # val/rec_loss
         input_key: str = "jpg",
     ):
         super().__init__()
@@ -109,11 +109,12 @@ class AutoencodingEngine(AbstractAutoencoder):
     def __init__(
         self,
         *args,
-        encoder_config: Dict,
-        decoder_config: Dict,
-        loss_config: Dict,
-        regularizer_config: Dict,
-        optimizer_config: Union[Dict, None] = None,
+        encoder_config: Dict,                                       # sgm.modules.diffusionmodules.model.Encoder, ddconfig
+        decoder_config: Dict,                                       # sgm.modules.diffusionmodules.model.Decoder, ddconfig
+        loss_config: Dict,                                          # torch.nn.Identity
+        regularizer_config: Dict,                                   # sgm.modules.autoencoding.regularizers.DiagonalGaussianRegularizer
+
+        optimizer_config: Union[Dict, None] = None,                 # torch.optim.Adam
         lr_g_factor: float = 1.0,
         trainable_ae_params: Optional[List[List[str]]] = None,
         ae_optimizer_args: Optional[List[dict]] = None,
